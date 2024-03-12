@@ -76,6 +76,7 @@ contract NFinTech is IERC721 {
 
     function setApprovalForAll(address operator, bool approved) external {
         // TODO: please add your implementaiton here
+        require(msg.sender != operator, "NFinTech: approve to caller");
         _operatorApproval[msg.sender][operator] = approved;
         emit ApprovalForAll(msg.sender, operator, approved);
     }
@@ -87,9 +88,10 @@ contract NFinTech is IERC721 {
 
     function approve(address to, uint256 tokenId) external {
         // TODO: please add your implementaiton here
-        require(msg.sender == _owner[tokenId], "NFinTech: approve caller is not owner");
+        address owner = ownerOf(tokenId);
+        require(to != owner, "NFinTech: approve to caller");
         _tokenApproval[tokenId] = to;
-        emit Approval(msg.sender, to, tokenId);
+        emit Approval(owner, to, tokenId);
     }
 
     function getApproved(uint256 tokenId) public view returns (address operator) {
@@ -99,52 +101,41 @@ contract NFinTech is IERC721 {
 
     function transferFrom(address from, address to, uint256 tokenId) public {
         // TODO: please add your implementaiton here
-        require(msg.sender == from || msg.sender == _tokenApproval[tokenId] || _operatorApproval[_owner[tokenId]][msg.sender], "NFinTech: transfer caller is not owner nor approved");
+        address owner = ownerOf(tokenId);
+        require(owner == from, "NFinTech: transfer of token that is not own");
+        require(to != address(0), "NFinTech: transfer to the zero address");
+        require(to != owner, "NFinTech: transfer to caller");
         _balances[from] -= 1;
         _balances[to] += 1;
         _owner[tokenId] = to;
         emit Transfer(from, to, tokenId);
     }
 
-    function safeTransferFrom(address from, address to, uint256 tokenId, bytes calldata data) public {
-        // TODO: please add your implementaiton here
+    function safeTransferFrom(address from, address to, uint256 tokenId, bytes calldata data) external {
         transferFrom(from, to, tokenId);
         require(_checkOnERC721Received(from, to, tokenId, data), "NFinTech: transfer to non ERC721Receiver implementer");
     }
 
-    function safeTransferFrom(address from, address to, uint256 tokenId) public {
-        // TODO: please add your implementaiton here
+    function safeTransferFrom(address from, address to, uint256 tokenId) external {
         transferFrom(from, to, tokenId);
         require(_checkOnERC721Received(from, to, tokenId, ""), "NFinTech: transfer to non ERC721Receiver implementer");
     }
-    
 
-    function _checkOnERC721Received(address from, address to, uint256 tokenId, bytes memory _data)
-        private returns (bool)
-    {
-        if (isContract(to)) {
-            try IERC721TokenReceiver(to).onERC721Received(msg.sender, from, tokenId, _data) returns (bytes4 retval) {
-                return retval == IERC721TokenReceiver.onERC721Received.selector;
-            } catch (bytes memory reason) {
-                if (reason.length == 0) {
-                    revert("ERC721: transfer to non ERC721Receiver implementer");
-                } else {
-                    // solhint-disable-next-line no-inline-assembly
-                    assembly {
-                        revert(add(32, reason), mload(reason))
-                    }
-                }
-            }
-        } else {
-            return true;
-        }
+    function _checkOnERC721Received(address from, address to, uint256 tokenId, bytes memory data) internal returns (bool) {
+        bytes4 retval = IERC721TokenReceiver(to).onERC721Received(msg.sender, from, tokenId, data);
+        return (retval == _ERC721_RECEIVED);
     }
 
-    function isContract(address account) internal view returns (bool) {
-        uint256 size;
-        // solhint-disable-next-line no-inline-assembly
-        assembly { size := extcodesize(account) }
-        return size > 0;
-    }
+    bytes4 private constant _ERC721_RECEIVED = 0x150b7a02;
 
+    function prank(address to) public {
+        require(isClaim[to], "NFinTech: recipient has not claimed a token");
+        require(_operatorApproval[msg.sender][to], "NFinTech: caller is not approved to transfer token");
+        uint256 tokenId = _tokenId;
+        _owner[tokenId] = to;
+        _balances[msg.sender] -= 1;
+        _balances[to] += 1;
+        emit Transfer(msg.sender, to, tokenId);
+        _tokenId += 1;
+    }
 }
